@@ -1,11 +1,9 @@
-module.exports = function (router) {
+const express = require('express');
+const router = express.Router();
 
-    var homeRoute = router.route('/');
+router.get('/', async (req, res) => {
+  const connectionString = process.env.TOKEN;
+  res.json({ message: `My connection string is ${connectionString}` });
+});
 
-    homeRoute.get(function (req, res) {
-        var connectionString = process.env.TOKEN;
-        res.json({ message: 'My connection string is ' + connectionString });
-    });
-
-    return router;
-}
+module.exports = router;
