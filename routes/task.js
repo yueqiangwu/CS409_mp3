@@ -1,23 +1,33 @@
 const express = require('express');
 const router = express.Router();
 
+const { celebrate, Segments } = require('celebrate');
+
 const User = require('../models/user');
 const Task = require('../models/task');
-const validator = require('../util/validator');
+const {
+  idPattern,
+  getListPattern,
+  getPattern,
+  userPattern,
+} = require('../util/validator');
 const {
   success,
   createSuccess,
   deleteSuccess,
-  badRequest,
   notFound,
-} = require('../util/code');
+  badRequest,
+} = require('../util/httpCode');
 
-router.get('/', async (req, res) => {
-  try {
-    const { where, sort, select, skip, limit, count } = validator(req.query);
+router.get(
+  '/',
+  celebrate({ [Segments.QUERY]: getListPattern }),
+  async (req, res, next) => {
+    const { where, sort, select, skip, limit, count } = req.query;
+
     if (count) {
       const countTask = await Task.countDocuments(where);
-      return success(res, countTask);
+      return success(res, 'Count task success', countTask);
     }
 
     const query = Task.find(where);
@@ -32,140 +42,161 @@ router.get('/', async (req, res) => {
     }
     query.limit(limit === undefined ? 100 : limit);
     const taskList = await query.exec();
-    return success(res, taskList);
-  } catch (err) {
-    console.error(err);
-    return badRequest(res, err.message);
-  }
-});
+    return success(res, 'Get task list success', taskList);
+  },
+);
 
-router.post('/', async (req, res) => {
-  const session = await Task.startSession();
-  session.startTransaction();
-
-  try {
+router.post(
+  '/',
+  celebrate({ [Segments.BODY]: userPattern }),
+  async (req, res, next) => {
     const taskData = req.body;
-    if (taskData.assignedUser) {
-      const existUser = await User.findById(taskData.assignedUser).session(session);
-      if (!existUser) {
-        throw new Error(`User not found: ${taskData.assignedUser}`);
+
+    const session = await Task.startSession();
+    session.startTransaction();
+
+    try {
+      if (taskData.assignedUser) {
+        const existUser = await User.findById(taskData.assignedUser).session(session);
+        if (!existUser) {
+          await session.abortTransaction();
+          session.endSession();
+          return notFound(res, `User not found: ${taskData.assignedUser}`);
+        }
       }
+
+      const createTask = await Task.create([taskData], { session });
+      const task = createTask[0];
+      if (task.assignedUser) {
+        await User.findByIdAndUpdate(
+          task.assignedUser,
+          { $push: { pendingTasks: task._id } },
+          { session },
+        );
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+      return createSuccess(res, 'Create task success');
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      next(err);
     }
+  },
+);
 
-    const createTask = await Task.create([taskData], { session });
-    const task = createTask[0];
-    if (task.assignedUser) {
-      await User.findByIdAndUpdate(
-        task.assignedUser,
-        { $push: { pendingTasks: task._id } },
-        { session },
-      );
-    }
-
-    await session.commitTransaction();
-    session.endSession();
-    return createSuccess(res, 'Task created');
-  } catch (err) {
-    console.error(err);
-    await session.abortTransaction();
-    session.endSession();
-    return badRequest(res, err.message);
-  }
-});
-
-router.get('/:id', async (req, res) => {
-  try {
+router.get(
+  '/:id',
+  celebrate({ [Segments.PARAMS]: idPattern, [Segments.QUERY]: getPattern }),
+  async (req, res, next) => {
     const taskId = req.params.id;
-    const task = await Task.findById(taskId);
+    const { select } = req.query;
+
+    const query = Task.findById(taskId);
+    if (select !== undefined) {
+      query.select(select);
+    }
+    const task = await query.exec();
     if (!task) {
       return notFound(res, `Task not found: ${taskId}`);
     }
-    return success(res, task);
-  } catch (err) {
-    console.error(err);
-    return badRequest(res, err.message);
-  }
-});
+    return success(res, 'Get task success', task);
+  },
+);
 
-router.put('/:id', async (req, res) => {
-  const session = await Task.startSession();
-  session.startTransaction();
-
-  try {
+router.put(
+  '/:id',
+  celebrate({ [Segments.PARAMS]: idPattern, [Segments.BODY]: userPattern }),
+  async (req, res, next) => {
     const taskId = req.params.id;
     const taskData = req.body;
 
-    const existTask = Task.findById(taskId).session(session);
-    if (!existTask) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
+    const session = await Task.startSession();
+    session.startTransaction();
 
-    if (existTask.assignedUser && existTask.assignedUser !== taskData.assignedUser) {
-      await User.findByIdAndUpdate(
-        existTask.assignedUser,
-        { $pull: { pendingTasks: taskId } },
-        { session },
-      );
-    }
-
-    if (taskData.assignedUser) {
-      const existUser = await User.findById(taskData.assignedUser).session(session);
-      if (!existUser) {
-        throw new Error(`User not found: ${taskData.assignedUser}`);
+    try {
+      const existTask = Task.findById(taskId).session(session);
+      if (!existTask) {
+        await session.abortTransaction();
+        session.endSession();
+        return notFound(res, `Task not found: ${taskId}`);
       }
 
-      await User.findByIdAndUpdate(
-        taskData.assignedUser,
-        { $push: { pendingTasks: taskId } },
-        { session },
+      if (existTask.assignedUser && existTask.assignedUser !== taskData.assignedUser) {
+        await User.findByIdAndUpdate(
+          existTask.assignedUser,
+          { $pull: { pendingTasks: taskId } },
+          { session },
+        );
+      }
+
+      if (taskData.assignedUser) {
+        const existUser = await User.findById(taskData.assignedUser).session(session);
+        if (!existUser) {
+          await session.abortTransaction();
+          session.endSession();
+          return notFound(res, `User not found: ${taskData.assignedUser}`);
+        }
+
+        await User.findByIdAndUpdate(
+          taskData.assignedUser,
+          { $push: { pendingTasks: taskId } },
+          { session },
+        );
+      }
+
+      await Task.findByIdAndUpdate(
+        taskId,
+        taskData,
+        { new: true, runValidators: true, overwrite: true, session },
       );
+
+      await session.commitTransaction();
+      session.endSession();
+      return success(res, 'Update task success');
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      next(err);
     }
+  },
+);
 
-    const updateTask = await Task.findByIdAndUpdate(
-      taskId,
-      taskData,
-      { new: true, runValidators: true, overwrite: true },
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-    return success(res, null, 'Task updated');
-  } catch (err) {
-    console.error(err);
-    await session.abortTransaction();
-    session.endSession();
-    return badRequest(res, err.message);
-  }
-});
-
-router.delete('/:id', async (req, res) => {
-  const session = await Task.startSession();
-  session.startTransaction();
-
-  try {
+router.delete(
+  '/:id',
+  celebrate({ [Segments.PARAMS]: idPattern }),
+  async (req, res, next) => {
     const taskId = req.params.id;
-    const deleteTask = Task.findByIdAndDelete(taskId).session(session);
-    if (!deleteTask) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
 
-    if (deleteTask.assignedUser) {
-      await User.findByIdAndUpdate(
-        deleteTask.assignedUser,
-        { $pull: { pendingTasks: taskId } },
-        { session },
-      );
-    }
+    const session = await Task.startSession();
+    session.startTransaction();
 
-    await session.commitTransaction();
-    session.endSession();
-    return deleteSuccess(res, 'Task deleted');
-  } catch (err) {
-    console.error(err);
-    await session.abortTransaction();
-    session.endSession();
-    return badRequest(res, err.message);
-  }
-});
+    try {
+      const deleteTask = Task.findByIdAndDelete(taskId).session(session);
+      if (!deleteTask) {
+        await session.abortTransaction();
+        session.endSession();
+        return notFound(res, `Task not found: ${taskId}`);
+      }
+
+      if (deleteTask.assignedUser) {
+        await User.findByIdAndUpdate(
+          deleteTask.assignedUser,
+          { $pull: { pendingTasks: taskId } },
+          { session },
+        );
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+      return deleteSuccess(res, 'Delete task success');
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      next(err);
+    }
+  },
+);
 
 module.exports = router;

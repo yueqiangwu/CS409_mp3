@@ -1,7 +1,10 @@
 // Get the packages we need
-const express = require('express'),
-  mongoose = require('mongoose'),
-  bodyParser = require('body-parser');
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const { errors } = require('celebrate');
+
+const errorHandler = require('./util/errorHandler');
 
 // Read .env file
 require('dotenv').config();
@@ -13,7 +16,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Connect to a MongoDB --> Uncomment this once you have a connection string!!
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(process.env.MONGODB_URI);
 
 // Allow CORS so that backend and frontend could be put on different servers
 const allowCrossDomain = function (req, res, next) {
@@ -25,13 +28,14 @@ const allowCrossDomain = function (req, res, next) {
 app.use(allowCrossDomain);
 
 // Use the body-parser package in our application
-app.use(bodyParser.urlencoded({
-  extended: true
-}));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
 // Use routes as a module (see index.js)
 require('./routes')(app);
+
+app.use(errors());
+app.use(errorHandler);
 
 // Start the server
 app.listen(port);

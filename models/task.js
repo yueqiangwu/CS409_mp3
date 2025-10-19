@@ -5,19 +5,25 @@ const TaskSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  description: String,
-  deadline: Date,
+  description: {
+    type: String,
+    default: '',
+  },
+  deadline: {
+    type: Date,
+    required: true,
+  },
   completed: {
     type: Boolean,
     default: false,
   },
   assignedUser: {
     type: String,
-    default: null,
+    default: '',
   },
   assignedUserName: {
     type: String,
-    default: '',
+    default: 'unassigned',
   },
   dateCreated: {
     type: Date,

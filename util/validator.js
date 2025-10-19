@@ -1,70 +1,70 @@
-// module.exports = function (query) {
-//   const { where, sort, select, skip, limit, count } = query;
-//   let where_ = {};
-//   if (where !== undefined) {
-//     try {
-//       where_ = JSON.parse(where);
-//     } catch (err) {
-//       throw new Error(`invalid params where: ${where}`);
-//     }
-//   }
-//   let sort_ = {};
-//   if (sort !== undefined) {
-//     try {
-//       sort_ = JSON.parse(sort);
-//     } catch (err) {
-//       throw new Error(`invalid params sort: ${sort}`);
-//     }
-//   }
-//   let select_ = {};
-//   if (select !== undefined) {
-//     try {
-//       select_ = JSON.parse(select);
-//     } catch (err) {
-//       throw new Error(`invalid params select: ${select}`);
-//     }
-//   }
-//   if (skip !== undefined) {
-//     if (typeof skip !== 'number' || skip < 0) {
-//       throw new Error(`invalid params skip: ${skip}`);
-//     }
-//   }
-//   if (limit !== undefined) {
-//     if (typeof limit !== 'number' || limit < 0) {
-//       throw new Error(`invalid params limit: ${limit}`);
-//     }
-//   }
-//   let count_ = false;
-//   if (count !== undefined) {
-//     if (typeof count !== 'string') {
-//       throw new Error(`invalid params count: ${count}`);
-//     }
-//     count_ = count.toLowerCase() === 'true';
-//   }
-//   return { where: where_, sort: sort_, select: select_, skip, limit, count: count_ };
-// };
+const { Joi } = require('celebrate');
+Joi.objectId = require('Joi-objectid')(Joi)
 
-module.exports = function (query) {
-  const { where, sort, select, skip, limit, count } = query;
-  let skip_ = undefined;
-  if (skip !== undefined) {
-    try {
-      skip_ = parseInt(skip);
-    } catch (err) {
-      throw new Error(`invalid params skip: ${skip}`);
-    }
-  }
-  let limit_ = undefined;
-  if (limit !== undefined) {
-    try {
-      limit_ = parseInt(limit);
-    } catch (err) {
-      throw new Error(`invalid params limit: ${limit}`);
-    }
-  }
-  let count_ = false;
-  if (count !== undefined) {
-    count_ = count.toLowerCase() === 'true';
-  }
-  return { where, sort, select, skip: skip_, limit: limit_, count: count_ };
+
+function isValidObjectString(value, helpers) {
+  return value;
+}
+
+const id = Joi.objectId().required();
+
+const where = Joi.string().custom(isValidObjectString).messages({
+  'any.invalid': '"where" must be a valid JSON or JavaScript object string',
+});
+const sort = Joi.string().custom(isValidObjectString).messages({
+  'any.invalid': '"sort" must be a valid JSON or JavaScript object string',
+});
+const select = Joi.number().custom(isValidObjectString).messages({
+  'any.invalid': '"sort" must be a valid JSON or JavaScript object string',
+});
+const skip = Joi.number().integer().min(1);
+const limit = Joi.number().integer().min(1);
+const count = Joi.boolean().truthy('true').falsy('false').messages({
+  'boolean.base': '"count" must be a boolean (true or false)',
+});
+
+const name = Joi.string().required();
+const email = Joi.string().email().required();
+const pendingTasks = Joi.array().items(Joi.objectId());
+const dateCreated = Joi.date();
+const description = Joi.string();
+const deadline = Joi.date().required();
+const completed = Joi.boolean();
+const assignedUser = Joi.string();
+const assignedUserName = Joi.string();
+
+const idPattern = Joi.object({ id });
+
+const getListPattern = Joi.object({
+  where,
+  sort,
+  select,
+  skip,
+  limit,
+  count,
+});
+const getPattern = Joi.object({ select });
+
+const userPattern = Joi.object({
+  name,
+  email,
+  pendingTasks,
+  dateCreated,
+});
+const taskPattern = Joi.object({
+  name,
+  description,
+  deadline,
+  completed,
+  assignedUser,
+  assignedUserName,
+  dateCreated,
+});
+
+module.exports = {
+  idPattern,
+  getListPattern,
+  getPattern,
+  userPattern,
+  taskPattern,
 };
