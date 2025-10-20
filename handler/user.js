@@ -10,7 +10,7 @@ const {
 const parseQueryStr = require('../util/parseQueryStr');
 
 const getUserListHandler = async (req, res, next) => {
-  const { where, sort, select, skip, limit, count } = req.query;
+  const { where, filter, sort, select, skip, limit, count } = req.query;
 
   if (count) {
     const userCount = await User.countDocuments(parseQueryStr(where));
@@ -23,6 +23,9 @@ const getUserListHandler = async (req, res, next) => {
   }
   if (select) {
     query.select(parseQueryStr(select));
+  }
+  if (filter) {
+    query.select(parseQueryStr(filter));
   }
   if (skip || skip === 0) {
     query.skip(skip);

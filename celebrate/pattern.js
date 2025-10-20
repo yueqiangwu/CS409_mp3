@@ -6,6 +6,7 @@ const id = Joi.objectId().required();
 const idPattern = Joi.object({ id });
 
 const where = Joi.string();
+const filter = Joi.string();
 const sort = Joi.string();
 const select = Joi.string();
 const skip = Joi.number().integer().min(0);
@@ -14,6 +15,7 @@ const count = Joi.boolean().truthy('true').falsy('false');
 
 const getListPattern = Joi.object({
   where,
+  filter,
   sort,
   select,
   skip,
