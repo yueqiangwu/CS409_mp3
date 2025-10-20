@@ -34,7 +34,7 @@ app.use(bodyParser.json());
 // Use routes as a module (see index.js)
 require('./routes')(app);
 
-app.use(errors());
+// app.use(errors());
 app.use(errorHandler);
 
 // Start the server

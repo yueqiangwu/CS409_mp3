@@ -34,7 +34,7 @@ function notFound(res, message, data) {
 }
 
 function internalError(res, message, data) {
-  return res.status(500)({
+  return res.status(500).json({
     message: message || 'Internal error',
     data: data || null,
   });

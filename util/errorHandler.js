@@ -3,8 +3,9 @@ const { isCelebrateError } = require('celebrate');
 const { badRequest, internalError } = require('./httpCode');
 
 function errorHandler(err, req, res, next) {
+  console.error(err);
+
   if (isCelebrateError(err)) {
-    console.error(err);
     const joiErrorMessages = [];
     for (const [segment, joiError] of err.details.entries()) {
       joiErrorMessages.push(`Invalid ${segment}: ${joiError.message}`);
@@ -12,7 +13,7 @@ function errorHandler(err, req, res, next) {
     return badRequest(res, joiErrorMessages.toString());
   }
 
-  if (err.name === 'MongoError' || err.name === 'ValidationError') {
+  if (err.name === 'MongoError' || err.name === 'MongoServerError' || err.name === 'ValidationError') {
     return badRequest(res, err.message);
   }
 

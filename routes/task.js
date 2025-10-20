@@ -9,15 +9,16 @@ const {
   idPattern,
   getListPattern,
   getPattern,
-  userPattern,
+  createTaskPattern,
+  updateTaskPattern,
 } = require('../util/validator');
 const {
   success,
   createSuccess,
   deleteSuccess,
   notFound,
-  badRequest,
 } = require('../util/httpCode');
+const parseQueryStr = require('../util/parseQueryStr');
 
 router.get(
   '/',
@@ -26,21 +27,21 @@ router.get(
     const { where, sort, select, skip, limit, count } = req.query;
 
     if (count) {
-      const countTask = await Task.countDocuments(where);
-      return success(res, 'Count task success', countTask);
+      const taskCount = await Task.countDocuments(parseQueryStr(where));
+      return success(res, 'Count task success', taskCount);
     }
 
-    const query = Task.find(where);
-    if (sort !== undefined) {
-      query.sort(sort);
+    const query = Task.find(parseQueryStr(where));
+    if (sort) {
+      query.sort(parseQueryStr(sort));
     }
-    if (select !== undefined) {
-      query.select(select);
+    if (select) {
+      query.select(parseQueryStr(select));
     }
-    if (skip !== undefined) {
+    if (skip) {
       query.skip(skip);
     }
-    query.limit(limit === undefined ? 100 : limit);
+    query.limit(limit || 100);
     const taskList = await query.exec();
     return success(res, 'Get task list success', taskList);
   },
@@ -48,40 +49,49 @@ router.get(
 
 router.post(
   '/',
-  celebrate({ [Segments.BODY]: userPattern }),
+  celebrate({ [Segments.BODY]: createTaskPattern }),
   async (req, res, next) => {
     const taskData = req.body;
+
+    let warning = null;
+    if (taskData.assignedUser) {
+      const existingUser = await User.findById(taskData.assignedUser);
+      if (!existingUser) {
+        return notFound(res, `User not found: ${taskData.assignedUser}`);
+      }
+      if (taskData.assignedUserName !== existingUser.name) {
+        warning = `User name [${existingUser.name}] and task assigned user name [${taskData.assignedUserName}] do not match`;
+        taskData.assignedUserName = existingUser.name;
+      }
+    } else {
+      if (taskData.assignedUserName && taskData.assignedUserName !== 'unassigned') {
+        warning = `Task assigned user name should be empty or unassigned instead of [${taskData.assignedUserName}]`;
+        taskData.assignedUserName = 'unassigned';
+      }
+    }
 
     const session = await Task.startSession();
     session.startTransaction();
 
     try {
-      if (taskData.assignedUser) {
-        const existUser = await User.findById(taskData.assignedUser).session(session);
-        if (!existUser) {
-          await session.abortTransaction();
-          session.endSession();
-          return notFound(res, `User not found: ${taskData.assignedUser}`);
-        }
-      }
+      const [taskCreated] = await Task.create([taskData], { session });
 
-      const createTask = await Task.create([taskData], { session });
-      const task = createTask[0];
-      if (task.assignedUser) {
+      if (taskData.assignedUser && !taskData.completed) {
         await User.findByIdAndUpdate(
-          task.assignedUser,
-          { $push: { pendingTasks: task._id } },
+          taskData.assignedUser,
+          { $push: { pendingTasks: taskCreated._id } },
           { session },
         );
       }
 
       await session.commitTransaction();
-      session.endSession();
-      return createSuccess(res, 'Create task success');
+      const message = warning ? `Create task success: Warning(${warning})` : 'Create task success';
+      return createSuccess(res, message, taskCreated);
     } catch (err) {
       await session.abortTransaction();
-      session.endSession();
       next(err);
+    } finally {
+      session.endSession();
     }
   },
 );
@@ -94,8 +104,8 @@ router.get(
     const { select } = req.query;
 
     const query = Task.findById(taskId);
-    if (select !== undefined) {
-      query.select(select);
+    if (select) {
+      query.select(parseQueryStr(select));
     }
     const task = await query.exec();
     if (!task) {
@@ -107,58 +117,87 @@ router.get(
 
 router.put(
   '/:id',
-  celebrate({ [Segments.PARAMS]: idPattern, [Segments.BODY]: userPattern }),
+  celebrate({ [Segments.PARAMS]: idPattern, [Segments.BODY]: updateTaskPattern }),
   async (req, res, next) => {
     const taskId = req.params.id;
-    const taskData = req.body;
+
+    const existingTask = await Task.findById(taskId);
+    if (!existingTask) {
+      return notFound(res, `Task not found: ${taskId}`);
+    }
+
+    const taskData = {
+      name: existingTask.name,
+      description: existingTask.description,
+      deadline: existingTask.deadline,
+      completed: existingTask.completed,
+      assignedUser: existingTask.assignedUser,
+      assignedUserName: existingTask.assignedUserName,
+      dateCreated: existingTask.dateCreated,
+      ...req.body,
+    };
+
+    const oldUser = existingTask.assignedUser;
+    const newUser = taskData.assignedUser;
+    const unassignedUser = (oldUser && oldUser !== newUser) ? oldUser : null;
+    const overlapUser = (oldUser && oldUser === newUser) ? oldUser : null;
+    const assignedUser = (newUser && newUser !== oldUser) ? newUser : null;
+
+    let warning = null;
+
+    if (overlapUser) {
+      if (existingTask.assignedUserName !== taskData.assignedUserName) {
+        warning = `User name [${existingTask.assignedUserName}] and task assigned user name [${taskData.assignedUserName}] do not match`;
+        taskData.assignedUserName = existingTask.assignedUserName;
+      }
+    }
+
+    if (assignedUser) {
+      const validUser = await User.findById(assignedUser);
+      if (!validUser) {
+        return notFound(res, `User not found: ${assignedUser}`);
+      }
+
+      if (validUser.name !== taskData.assignedUserName) {
+        warning = `User name [${validUser.name}] and task assigned user name [${taskData.assignedUserName}] do not match`;
+        taskData.assignedUserName = validUser.name;
+      }
+    }
 
     const session = await Task.startSession();
     session.startTransaction();
 
     try {
-      const existTask = Task.findById(taskId).session(session);
-      if (!existTask) {
-        await session.abortTransaction();
-        session.endSession();
-        return notFound(res, `Task not found: ${taskId}`);
-      }
+      const taskUpdated = await Task.findByIdAndUpdate(
+        taskId,
+        taskData,
+        { new: true, runValidators: true, session },
+      );
 
-      if (existTask.assignedUser && existTask.assignedUser !== taskData.assignedUser) {
+      if (unassignedUser) {
         await User.findByIdAndUpdate(
-          existTask.assignedUser,
+          unassignedUser,
           { $pull: { pendingTasks: taskId } },
           { session },
         );
       }
 
-      if (taskData.assignedUser) {
-        const existUser = await User.findById(taskData.assignedUser).session(session);
-        if (!existUser) {
-          await session.abortTransaction();
-          session.endSession();
-          return notFound(res, `User not found: ${taskData.assignedUser}`);
-        }
-
+      if (assignedUser && !taskData.completed) {
         await User.findByIdAndUpdate(
-          taskData.assignedUser,
+          assignedUser,
           { $push: { pendingTasks: taskId } },
           { session },
         );
       }
 
-      await Task.findByIdAndUpdate(
-        taskId,
-        taskData,
-        { new: true, runValidators: true, overwrite: true, session },
-      );
-
       await session.commitTransaction();
-      session.endSession();
-      return success(res, 'Update task success');
+      const message = warning ? `Update task success: Warning(${warning})` : 'Update task success';
+      return success(res, message, taskUpdated);
     } catch (err) {
       await session.abortTransaction();
-      session.endSession();
       next(err);
+    } finally {
+      session.endSession();
     }
   },
 );
@@ -169,32 +208,32 @@ router.delete(
   async (req, res, next) => {
     const taskId = req.params.id;
 
+    const existingTask = await Task.findById(taskId);
+    if (!existingTask) {
+      return notFound(res, `Task not found: ${taskId}`);
+    }
+
     const session = await Task.startSession();
     session.startTransaction();
 
     try {
-      const deleteTask = Task.findByIdAndDelete(taskId).session(session);
-      if (!deleteTask) {
-        await session.abortTransaction();
-        session.endSession();
-        return notFound(res, `Task not found: ${taskId}`);
-      }
+      await Task.findByIdAndDelete(taskId, { session });
 
-      if (deleteTask.assignedUser) {
+      if (existingTask.assignedUser) {
         await User.findByIdAndUpdate(
-          deleteTask.assignedUser,
+          existingTask.assignedUser,
           { $pull: { pendingTasks: taskId } },
           { session },
         );
       }
 
       await session.commitTransaction();
-      session.endSession();
       return deleteSuccess(res, 'Delete task success');
     } catch (err) {
       await session.abortTransaction();
-      session.endSession();
       next(err);
+    } finally {
+      session.endSession();
     }
   },
 );
