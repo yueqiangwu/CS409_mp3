@@ -2,7 +2,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
-const { errors } = require('celebrate');
 
 const errorHandler = require('./util/errorHandler');
 
@@ -30,6 +29,9 @@ app.use(allowCrossDomain);
 // Use the body-parser package in our application
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+
+const morgan = require('morgan');
+app.use(morgan('short'));
 
 // Use routes as a module (see index.js)
 require('./routes')(app);

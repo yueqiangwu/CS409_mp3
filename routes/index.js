@@ -5,8 +5,8 @@ const { notFound } = require('../util/httpCode');
  */
 module.exports = function (app) {
   app.use('/api', require('./home.js'));
-  app.use('/api/user', require('./user.js'));
-  app.use('/api/task', require('./task.js'));
+  app.use('/api/users', require('./user.js'));
+  app.use('/api/tasks', require('./task.js'));
 
   app.use((req, res) => {
     return notFound(res, `URL not found: ${req.originalUrl}`);
