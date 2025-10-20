@@ -14,6 +14,7 @@ const assignedUser = Joi.objectId().allow('', null);
 const assignedUserName = Joi.string();
 const dateCreated = Joi.date();
 
+const idUpdate = Joi.objectId().allow('', null);
 const nameUpdate = Joi.string();
 const deadlineUpdate = Joi.date();
 
@@ -27,6 +28,7 @@ const createTaskPattern = Joi.object({
   dateCreated,
 });
 const updateTaskPattern = Joi.object({
+  id: idUpdate,
   name: nameUpdate,
   description,
   deadline: deadlineUpdate,

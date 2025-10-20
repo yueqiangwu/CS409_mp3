@@ -107,6 +107,7 @@ const updateUserHandler = async (req, res, next) => {
     pendingTasks: existingUser.pendingTasks,
     dateCreated: existingUser.dateCreated,
     ...req.body,
+    _id: userId,
   };
 
   if (userData.email !== existingUser.email) {

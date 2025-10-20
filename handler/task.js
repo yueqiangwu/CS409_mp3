@@ -118,6 +118,7 @@ const updateTaskHandler = async (req, res, next) => {
     assignedUserName: existingTask.assignedUserName,
     dateCreated: existingTask.dateCreated,
     ...req.body,
+    _id: taskId,
   };
 
   const oldUser = existingTask.assignedUser;

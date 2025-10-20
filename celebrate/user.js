@@ -11,6 +11,7 @@ const email = Joi.string().email().required();
 const pendingTasks = Joi.array().items(Joi.objectId());
 const dateCreated = Joi.date();
 
+const idUpdate = Joi.objectId().allow('', null);
 const nameUpdate = Joi.string();
 const emailUpdate = Joi.string().email();
 
@@ -21,6 +22,7 @@ const createUserPattern = Joi.object({
   dateCreated,
 });
 const updateUserPattern = Joi.object({
+  _id: idUpdate,
   name: nameUpdate,
   email: emailUpdate,
   pendingTasks,

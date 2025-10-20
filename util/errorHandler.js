@@ -3,6 +3,8 @@ const { isCelebrateError } = require('celebrate');
 const { badRequest, internalError } = require('./httpCode');
 
 function errorHandler(err, req, res, next) {
+  console.error(err);
+
   if (isCelebrateError(err)) {
     const joiErrorMessages = [];
     for (const [segment, joiError] of err.details.entries()) {
@@ -15,7 +17,6 @@ function errorHandler(err, req, res, next) {
     return badRequest(res, err.message);
   }
 
-  console.error('Unknown error:', err);
   return internalError(res, err.message);
 }
 
